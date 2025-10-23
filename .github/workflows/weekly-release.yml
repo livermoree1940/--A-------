@@ -2,8 +2,8 @@ name: Weekly A-Share Codes Release
 
 on:
   schedule:
-    - cron: '0 3 * * 0'  # 每周日 03:00 UTC（北京时间 11:00）
-  workflow_dispatch:      # 手动触发按钮
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
   push:
     branches: [ main ]
 
@@ -11,7 +11,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write    # 确保有写入权限
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -26,31 +26,35 @@ jobs:
       - name: Generate stock codes
         run: python save_all_codes.py
 
-      - name: Generate timestamp for filename
+      - name: Generate unique timestamp
         id: timestamp
         run: |
           CURRENT_TIME=$(date +"%Y%m%d_%H%M%S")
           echo "TIMESTAMP=$CURRENT_TIME" >> $GITHUB_OUTPUT
-          echo "New filename will include timestamp: $CURRENT_TIME"
 
-      - name: Rename file with timestamp
+      - name: Create timestamped filename
         run: |
           cp output/A股全部股票代码.txt "output/A股全部股票代码_${{ steps.timestamp.outputs.TIMESTAMP }}.txt"
-          echo "Original file kept, new timestamped file created"
+          echo "Timestamped file created successfully"
 
       - name: Get current date for tag
         id: date
         run: echo "TAG=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
 
-      - name: Delete old tag if exists
+      - name: Delete old tag if exists (with error handling)
         continue-on-error: true
         run: |
-          gh api repos/${{ github.repository }}/git/refs/tags/${{ steps.date.outputs.TAG }} --method DELETE
-          echo "Old tag deleted (if existed)"
+          # 优雅地处理标签不存在的情况
+          if gh api repos/${{ github.repository }}/git/refs/tags/${{ steps.date.outputs.TAG }} > /dev/null 2>&1; then
+            gh api repos/${{ github.repository }}/git/refs/tags/${{ steps.date.outputs.TAG }} --method DELETE
+            echo "Old tag deleted successfully"
+          else
+            echo "Tag does not exist, skipping deletion"
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Create release with timestamped file
+      - name: Create release with unique filename
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.date.outputs.TAG }}
