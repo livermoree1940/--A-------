@@ -1,0 +1,47 @@
+name: Weekly A-Share Codes Release
+
+on:
+  schedule:
+    # 每周日 03:00 UTC（北京时间 11:00）
+    - cron: '0 3 * * 0'
+  workflow_dispatch:   # 手动触发按钮，方便调试
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Generate txt
+        run: python save_all_codes.py
+
+      - name: Get current date
+        id: date
+        run: echo "TAG=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+
+      # 如果当天已存在同名 tag，先删除再重建（覆盖）
+      - name: Delete old tag(if exist)
+        continue-on-error: true
+        run: |
+          gh api repos/${{ github.repository }}/git/refs/tags/${{ steps.date.outputs.TAG }} \
+            --method DELETE
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.date.outputs.TAG }}
+          name: "A股代码表 ${{ steps.date.outputs.TAG }}"
+          files: output/A股全部股票代码.txt
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
