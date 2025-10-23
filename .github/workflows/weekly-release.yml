@@ -2,14 +2,16 @@ name: Weekly A-Share Codes Release
 
 on:
   schedule:
-    - cron: '0 3 * * 0'
-  workflow_dispatch:
+    - cron: '0 3 * * 0'  # 每周日 03:00 UTC（北京时间 11:00）
+  workflow_dispatch:      # 手动触发按钮
   push:
     branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write    # 确保有写入权限
     steps:
       - uses: actions/checkout@v4
 
@@ -21,28 +23,39 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
-      - name: Generate txt
+      - name: Generate stock codes
         run: python save_all_codes.py
 
-      - name: Get current date
+      - name: Generate timestamp for filename
+        id: timestamp
+        run: |
+          CURRENT_TIME=$(date +"%Y%m%d_%H%M%S")
+          echo "TIMESTAMP=$CURRENT_TIME" >> $GITHUB_OUTPUT
+          echo "New filename will include timestamp: $CURRENT_TIME"
+
+      - name: Rename file with timestamp
+        run: |
+          cp output/A股全部股票代码.txt "output/A股全部股票代码_${{ steps.timestamp.outputs.TIMESTAMP }}.txt"
+          echo "Original file kept, new timestamped file created"
+
+      - name: Get current date for tag
         id: date
         run: echo "TAG=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
 
-      - name: Delete old tag(if exist)
+      - name: Delete old tag if exists
         continue-on-error: true
         run: |
-          gh api repos/${{ github.repository }}/git/refs/tags/${{ steps.date.outputs.TAG }} \
-            --method DELETE
+          gh api repos/${{ github.repository }}/git/refs/tags/${{ steps.date.outputs.TAG }} --method DELETE
+          echo "Old tag deleted (if existed)"
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Release
+      - name: Create release with timestamped file
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.date.outputs.TAG }}
           name: "A股代码表 ${{ steps.date.outputs.TAG }}"
-          files: output/A股全部股票代码.txt
+          files: output/A股全部股票代码_${{ steps.timestamp.outputs.TIMESTAMP }}.txt
           generate_release_notes: false
-          overwrite_files: true  # ✅ 关键修正
         env:
           GITHUB_TOKEN: ${{ github.token }}
